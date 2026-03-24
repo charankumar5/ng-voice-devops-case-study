@@ -1,0 +1,104 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "webserver.fullname" . }}
+spec:
+  replicas: {{ .Values.webserver.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "webserver.fullname" . }}
+      role: webserver      # static label — used by NetworkPolicy
+  template:
+    metadata:
+      labels:
+        app: {{ include "webserver.fullname" . }}
+        role: webserver   
+    spec:
+      initContainers:
+        - name: {{ .Values.initcontainer.name }}
+          image: {{ .Values.initcontainer.image }}
+          command: ["/bin/sh", "-c"]
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          args:
+            - |
+              set -e
+              echo "Init container starting for pod: ${POD_NAME}"
+              # tail -c 6 returns last 5 chars + newline; command substitution strips newline
+              SUFFIX=$(echo "${POD_NAME}" | tail -c 6)
+              VALUE="Host-${SUFFIX}"
+              echo "Computed serving-host: ${VALUE}"
+              echo "${VALUE}" > /shared/serving-host.txt
+              echo "Init container complete."
+          volumeMounts:
+            - name: shared-data
+              mountPath: /shared
+
+      containers:
+        - name: {{ .Values.webserver.name }}
+          image: {{ .Values.webserver.image }}
+          ports:
+            - containerPort: {{ .Values.webserver.port }}
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          volumeMounts:
+            - name: {{ .Values.webserver.configMapName }}
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: default.conf
+            - name: {{ .Values.webserver.configMapName }}
+              mountPath: /usr/share/nginx/html/index.template.html
+              subPath: index.template.html
+            - name: shared-data
+              mountPath: /shared
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              SERVING_HOST=$(cat /shared/serving-host.txt)
+              export SERVING_HOST
+
+              echo "POD_IP=${POD_IP}"
+              echo "POD_NAME=${POD_NAME}"
+              echo "SERVING_HOST=${SERVING_HOST}"
+
+              # FIX: use sed instead of envsubst — envsubst is not guaranteed
+              # in nginx:1.14.2 (old Debian base without gettext-base)
+              sed \
+                -e "s|\${POD_IP}|${POD_IP}|g" \
+                -e "s|\${POD_NAME}|${POD_NAME}|g" \
+                -e "s|\${SERVING_HOST}|${SERVING_HOST}|g" \
+                /usr/share/nginx/html/index.template.html \
+                > /usr/share/nginx/html/index_rendered.html
+
+              echo "Rendered page written. Starting nginx."
+              exec nginx -g 'daemon off;'
+
+          livenessProbe:
+            httpGet:
+              path: /
+              port: {{ .Values.webserver.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /
+              port: {{ .Values.webserver.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+      volumes:
+        - name: {{ .Values.webserver.configMapName }}
+          configMap:
+            name: {{ .Values.webserver.configMapName }}
+        - name: shared-data
+          emptyDir: {}

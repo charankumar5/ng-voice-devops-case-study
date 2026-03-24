@@ -1,0 +1,9 @@
+apiVersion: projectcalico.org/v3
+kind: IPPool
+metadata:
+  name: db-specific-network
+spec:
+  cidr: 10.0.1.0/24
+  ipipMode: Always
+  natOutgoing: true
+  nodeSelector: "database-location == 'node-1'" # Requirement 7 linking to node selector in pod spec

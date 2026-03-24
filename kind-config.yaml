@@ -1,0 +1,10 @@
+# three node (two workers) cluster config
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+networking:
+  disableDefaultCNI: true # disable default CNI to use Calico instead to satisfy Case Study to deny traffic and pod network policies
+  podSubnet: "192.168.0.0/16"
+nodes:
+- role: control-plane
+- role: worker
+- role: worker

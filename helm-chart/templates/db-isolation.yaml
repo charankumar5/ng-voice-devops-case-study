@@ -1,0 +1,39 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-isolation
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mysql   # matches Bitnami MySQL pods
+  policyTypes:
+    - Ingress
+
+  ingress:
+    # RULE 1: Web server pods → MySQL on 3306
+    # Now uses stable static label "role: webserver" set in deployment.yaml
+    - from:
+        - podSelector:
+            matchLabels:
+              role: webserver
+      ports:
+        - protocol: TCP
+          port: 3306
+
+    # RULE 2: MySQL pods → each other (replication traffic)
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mysql
+      ports:
+        - protocol: TCP
+          port: 3306
+
+    # RULE 3: Kubelet health probes from KIND node network
+    - from:
+        - ipBlock:
+            cidr: 172.18.0.0/16
+      ports:
+        - protocol: TCP
+          port: 3306

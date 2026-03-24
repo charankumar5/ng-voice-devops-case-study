@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.webserver.configMapName }}
+data:
+  default.conf: |
+    server {
+      listen {{ .Values.webserver.port }};
+      location / {
+        root /usr/share/nginx/html;
+        index index_rendered.html;
+      }
+    }
+
+  index.template.html: |
+    <!DOCTYPE html>
+    <html>
+    <head><title>NGVoice Web Server</title></head>
+    <body>
+      <h1>Welcome to the Web Server</h1>
+      <p>Pod IP address: <strong>${POD_IP}</strong></p>
+      <p>Pod Name: <strong>${POD_NAME}</strong></p>
+      <p>Serving Host: <strong>${SERVING_HOST}</strong></p>
+    </body>
+    </html>

@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: cni-plugins-installer
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      app: cni-plugins-installer
+  template:
+    metadata:
+      labels:
+        app: cni-plugins-installer
+    spec:
+      hostNetwork: true
+      tolerations:
+        - operator: Exists
+          effect: NoSchedule
+      initContainers:
+        - name: install-cni-plugins
+          image: alpine:3.19
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              echo "Checking if macvlan already installed..."
+              if [ -f /host/opt/cni/bin/macvlan ]; then
+                echo "macvlan already present, skipping install."
+                exit 0
+              fi
+              echo "Downloading CNI plugins v1.4.0..."
+              wget -q \
+                https://github.com/containernetworking/plugins/releases/download/v1.4.0/cni-plugins-linux-amd64-v1.4.0.tgz \
+                -O /tmp/cni-plugins.tgz
+              echo "Extracting to /host/opt/cni/bin..."
+              tar -xz -C /host/opt/cni/bin -f /tmp/cni-plugins.tgz
+              echo "Done. Installed plugins:"
+              ls /host/opt/cni/bin/
+              echo "macvlan check:"
+              ls /host/opt/cni/bin/macvlan
+          volumeMounts:
+            - name: cni-bin
+              mountPath: /host/opt/cni/bin
+          securityContext:
+            privileged: true
+
+      containers:
+        - name: pause
+          image: busybox:1.28
+          command: ["sleep", "3600d"]
+          resources:
+            requests:
+              cpu: "1m"
+              memory: "8Mi"
+            limits:
+              cpu: "5m"
+              memory: "16Mi"
+
+      volumes:
+        - name: cni-bin
+          hostPath:
+            path: /opt/cni/bin
+            type: DirectoryOrCreate
